@@ -41,6 +41,10 @@
       fill: #f59e0b;
     }
 
+    .country.selected {
+      fill: #3b82f6;
+    }
+
     .graticule {
       fill: none;
       stroke: #dde6ef;
@@ -173,6 +177,33 @@
       box-shadow: 0 4px 14px rgba(248,113,113,0.18);
     }
 
+    #search-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.09);
+      max-height: 220px;
+      overflow-y: auto;
+      display: none;
+      z-index: 101;
+    }
+
+    .search-option {
+      padding: 9px 14px 9px 36px;
+      font-size: 14px;
+      color: #0f172a;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .search-option:hover {
+      background: #f1f5f9;
+    }
+
     /* ── Hint label ── */
     #hint {
       position: fixed;
@@ -216,6 +247,7 @@
     <div id="search-wrap">
       <span id="search-icon">🔍</span>
       <input id="search" type="text" placeholder="Search countries…" autocomplete="off" spellcheck="false">
+      <div id="search-dropdown"></div>
     </div>
   </div>
 
@@ -473,6 +505,10 @@
     searchEl.addEventListener('keydown', e => {
       if (e.key === 'Escape') { searchEl.value = ''; onSearch(); }
     });
+    searchEl.addEventListener('blur', () => {
+      // Short delay so mousedown on an option fires first
+      setTimeout(hideDropdown, 150);
+    });
 
     // Resize
     window.addEventListener('resize', () => {
@@ -556,10 +592,12 @@
     const data = COUNTRY_DATA[d.id] || null;
     const el = d3.select(this);
 
-    // Only highlight if not search-highlighted
-    if (!el.classed('highlighted')) {
-      el.raise();
+    // Clear search highlight when hovering over a different country
+    if (currentHighlighted && currentHighlighted !== d.id) {
+      clearHighlight();
     }
+
+    el.raise();
 
     // Use the country's bounding-box centroid so the tooltip goes to the
     // farthest corner from the country, not from the cursor
@@ -583,48 +621,85 @@
   }
 
   // ── Search ─────────────────────────────────────────────────
-  function onSearch() {
-    const q = searchEl.value.trim().toLowerCase();
+  const dropdown = document.getElementById('search-dropdown');
 
-    // Clear previous highlight
+  function clearHighlight() {
     if (currentHighlighted) {
-      d3.select('#c' + currentHighlighted).classed('highlighted', false);
+      d3.select('#c' + currentHighlighted)
+        .classed('highlighted', false)
+        .classed('selected', false);
       currentHighlighted = null;
       hideCapitalDot();
       hideTooltip();
     }
+  }
+
+  function hideDropdown() {
+    dropdown.style.display = 'none';
+  }
+
+  function selectCountry(id, data) {
+    clearHighlight();
+    searchEl.value = data.name;
+    hideDropdown();
+    searchEl.classList.remove('no-match');
+
+    currentHighlighted = id;
+    const el = d3.select('#c' + id);
+    el.classed('selected', true).raise();
+    capitalGroup.raise();
+
+    showCapitalDot(data);
+    const pathNode = el.node();
+    if (pathNode) {
+      const bbox = pathNode.getBoundingClientRect();
+      showTooltip(data, bbox.left + bbox.width / 2, bbox.top + bbox.height / 2);
+    }
+  }
+
+  function onSearch() {
+    const q = searchEl.value.trim().toLowerCase();
+
+    clearHighlight();
 
     if (!q) {
       searchEl.classList.remove('no-match');
+      hideDropdown();
       return;
     }
 
-    // Find first match
-    const match = Object.entries(COUNTRY_DATA).find(([, v]) =>
-      v.name.toLowerCase().startsWith(q)
-    ) || Object.entries(COUNTRY_DATA).find(([, v]) =>
-      v.name.toLowerCase().includes(q)
-    );
+    // All matches, starts-with first
+    const matches = Object.entries(COUNTRY_DATA)
+      .filter(([, v]) => v.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const as = a[1].name.toLowerCase().startsWith(q);
+        const bs = b[1].name.toLowerCase().startsWith(q);
+        if (as && !bs) return -1;
+        if (!as && bs) return  1;
+        return a[1].name.localeCompare(b[1].name);
+      });
 
-    if (match) {
-      const [id, data] = match;
-      searchEl.classList.remove('no-match');
-      currentHighlighted = +id;
-      const el = d3.select('#c' + id);
-      el.classed('highlighted', true).raise();
-
-      // Show capital dot and tooltip for matched country
-      showCapitalDot(data);
-
-      // Position tooltip near country centroid
-      const pathNode = el.node();
-      if (pathNode) {
-        const bbox = pathNode.getBoundingClientRect();
-        showTooltip(data, bbox.left + bbox.width / 2, bbox.top + bbox.height / 2);
-      }
-    } else {
+    if (matches.length === 0) {
       searchEl.classList.add('no-match');
+      hideDropdown();
+      return;
     }
+
+    searchEl.classList.remove('no-match');
+
+    // Populate dropdown
+    dropdown.innerHTML = '';
+    matches.slice(0, 12).forEach(([id, data]) => {
+      const div = document.createElement('div');
+      div.className = 'search-option';
+      div.textContent = data.name;
+      div.addEventListener('mousedown', e => {
+        e.preventDefault();          // keep focus on input
+        selectCountry(+id, data);
+      });
+      dropdown.appendChild(div);
+    });
+    dropdown.style.display = 'block';
   }
 
   // ── Load map data ──────────────────────────────────────────
