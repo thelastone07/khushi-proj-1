@@ -503,20 +503,25 @@
     positionTooltip(x, y);
   }
 
-  function positionTooltip(x, y) {
+  function positionTooltip(refX, refY) {
     const tt  = tooltip;
     const tw  = tt.offsetWidth  || 280;
     const th  = tt.offsetHeight || 160;
     const pad = 14;
-    let left  = x + pad;
-    let top   = y - th / 2;
-    // Flip horizontal if near right edge
-    if (left + tw + pad > width)  left = x - tw - pad;
-    // Clamp vertical
-    if (top < pad)                top = pad;
-    if (top + th + pad > height)  top = height - th - pad;
-    tt.style.left = left + 'px';
-    tt.style.top  = top  + 'px';
+    // Pick the viewport corner whose centre is farthest from the country centroid
+    const corners = [
+      { left: pad,                  top: pad },
+      { left: width  - tw - pad,   top: pad },
+      { left: pad,                  top: height - th - pad },
+      { left: width  - tw - pad,   top: height - th - pad }
+    ];
+    let best = corners[0], bestDist = -1;
+    for (const c of corners) {
+      const dist = Math.hypot((c.left + tw / 2) - refX, (c.top + th / 2) - refY);
+      if (dist > bestDist) { bestDist = dist; best = c; }
+    }
+    tt.style.left = best.left + 'px';
+    tt.style.top  = best.top  + 'px';
   }
 
   function hideTooltip() {
@@ -556,7 +561,12 @@
       el.raise();
     }
 
-    showTooltip(data, event.clientX, event.clientY);
+    // Use the country's bounding-box centroid so the tooltip goes to the
+    // farthest corner from the country, not from the cursor
+    const bbox = this.getBoundingClientRect();
+    const cx = bbox.left + bbox.width  / 2;
+    const cy = bbox.top  + bbox.height / 2;
+    showTooltip(data, cx, cy);
     showCapitalDot(data);
 
     hint.style.opacity = '0';
