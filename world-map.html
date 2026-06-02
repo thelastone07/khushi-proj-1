@@ -193,21 +193,20 @@
 
     /* ── Capital dot ── */
     .capital-dot {
-      fill: #ef4444;
+      fill: #facc15;
       stroke: #fff;
-      stroke-width: 1.5px;
+      stroke-width: 1px;
       pointer-events: none;
-      filter: drop-shadow(0 1px 3px rgba(239,68,68,0.5));
+      filter: drop-shadow(0 1px 3px rgba(34,197,94,0.5));
     }
 
     .capital-label {
       font-size: 10px;
-      fill: #ef4444;
-      font-weight: 600;
+      fill: #facc15;
+      font-weight: 800;
       pointer-events: none;
       text-anchor: middle;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      filter: drop-shadow(0 0 2px #fff);
     }
   </style>
 </head>
@@ -534,7 +533,7 @@
       .attr('class','capital-dot')
       .attr('cx', coords[0])
       .attr('cy', coords[1])
-      .attr('r',  4);
+      .attr('r',  2.5);
     capitalGroup.append('text')
       .attr('class','capital-label')
       .attr('x', coords[0])
