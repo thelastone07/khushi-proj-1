@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Map Explorer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #e8edf2;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #map-container {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #world-map {
+      width: 100%;
+      height: 100%;
+    }
+
+    .country {
+      fill: #c8d6e5;
+      stroke: #fff;
+      stroke-width: 0.5px;
+      cursor: pointer;
+      transition: fill 0.12s ease;
+    }
+
+    .country:hover {
+      fill: #3b82f6;
+    }
+
+    .country.highlighted {
+      fill: #f59e0b;
+    }
+
+    .graticule {
+      fill: none;
+      stroke: #dde6ef;
+      stroke-width: 0.4px;
+    }
+
+    .sphere {
+      fill: #d6e8f5;
+    }
+
+    /* ── Tooltip ── */
+    #tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 14px 18px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);
+      max-width: 300px;
+      min-width: 220px;
+      z-index: 200;
+      display: none;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .tt-header {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .tt-flag {
+      font-size: 26px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .tt-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.2;
+    }
+
+    .tt-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 5px;
+      color: #475569;
+    }
+
+    .tt-label {
+      font-weight: 600;
+      color: #334155;
+      white-space: nowrap;
+      min-width: 70px;
+    }
+
+    .tt-value {
+      color: #334155;
+    }
+
+    .tt-fact {
+      margin-top: 9px;
+      padding-top: 9px;
+      border-top: 1px solid #f1f5f9;
+      color: #64748b;
+      font-style: italic;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .tt-no-data {
+      color: #94a3b8;
+      font-style: italic;
+      text-align: center;
+      padding: 6px 0;
+    }
+
+    /* ── Search bar ── */
+    #search-container {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+    }
+
+    #search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    #search-icon {
+      position: absolute;
+      left: 11px;
+      font-size: 14px;
+      color: #94a3b8;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #search {
+      background: #fff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 14px 10px 36px;
+      font-size: 14px;
+      width: 230px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.09);
+      outline: none;
+      color: #0f172a;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+
+    #search::placeholder { color: #94a3b8; }
+
+    #search:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 4px 14px rgba(59,130,246,0.18);
+    }
+
+    #search.no-match {
+      border-color: #f87171;
+      box-shadow: 0 4px 14px rgba(248,113,113,0.18);
+    }
+
+    /* ── Hint label ── */
+    #hint {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.88);
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 12px;
+      color: #64748b;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      backdrop-filter: blur(6px);
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    /* ── Capital dot ── */
+    .capital-dot {
+      fill: #ef4444;
+      stroke: #fff;
+      stroke-width: 1.5px;
+      pointer-events: none;
+      filter: drop-shadow(0 1px 3px rgba(239,68,68,0.5));
+    }
+
+    .capital-label {
+      font-size: 10px;
+      fill: #ef4444;
+      font-weight: 600;
+      pointer-events: none;
+      text-anchor: middle;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      filter: drop-shadow(0 0 2px #fff);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="search-container">
+    <div id="search-wrap">
+      <span id="search-icon">🔍</span>
+      <input id="search" type="text" placeholder="Search countries…" autocomplete="off" spellcheck="false">
+    </div>
+  </div>
+
+  <div id="map-container">
+    <svg id="world-map" aria-label="Interactive world map"></svg>
+  </div>
+
+  <div id="tooltip" role="tooltip"></div>
+  <div id="hint">Hover over any country to explore</div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js"></script>
+  <script>
+  // ─────────────────────────────────────────────────────────────
+  //  Country data keyed by ISO 3166-1 numeric code (integer id
+  //  matching world-atlas TopoJSON feature IDs)
+  // ─────────────────────────────────────────────────────────────
+  function toFlag(iso2) {
+    if (!iso2 || iso2.length !== 2) return '🌍';
+    return [...iso2.toUpperCase()].map(c =>
+      String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)
+    ).join('');
+  }
+
+  const COUNTRY_DATA = {
+    4:   { name:"Afghanistan",           iso2:"AF", religion:"Islam (Sunni)",          language:"Pashto, Dari",          fact:"Afghanistan has been inhabited for over 50,000 years and was a key hub of the ancient Silk Road.",              capital:{name:"Kabul",           lat:34.5253,   lng:69.1783}},
+    8:   { name:"Albania",               iso2:"AL", religion:"Islam / Christianity",   language:"Albanian",               fact:"Albania has over 3,000 hours of sunshine per year — more than most of Western Europe.",                        capital:{name:"Tirana",          lat:41.3275,   lng:19.8189}},
+    12:  { name:"Algeria",               iso2:"DZ", religion:"Islam (Sunni)",          language:"Arabic, Berber",         fact:"Algeria is Africa's largest country by area and the 10th largest in the world.",                              capital:{name:"Algiers",         lat:36.7538,   lng:3.0588}},
+    24:  { name:"Angola",                iso2:"AO", religion:"Christianity",           language:"Portuguese",             fact:"Angola produces roughly 1.8 million barrels of oil per day, making it Africa's second-largest oil producer.",  capital:{name:"Luanda",          lat:-8.8383,   lng:13.2344}},
+    32:  { name:"Argentina",             iso2:"AR", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Argentina has the highest number of psychiatrists per capita in the world.",                                  capital:{name:"Buenos Aires",    lat:-34.6037,  lng:-58.3816}},
+    36:  { name:"Australia",             iso2:"AU", religion:"Christianity",           language:"English",                fact:"Australia is the only country that occupies an entire continent and is home to 80% of unique flora and fauna.", capital:{name:"Canberra",        lat:-35.2809,  lng:149.1300}},
+    40:  { name:"Austria",               iso2:"AT", religion:"Christianity (Catholic)",language:"German",                 fact:"Austria is the birthplace of Mozart, Schubert, Freud, and many other luminaries of Western culture.",          capital:{name:"Vienna",          lat:48.2082,   lng:16.3738}},
+    50:  { name:"Bangladesh",            iso2:"BD", religion:"Islam (Sunni)",          language:"Bengali",                fact:"Bangladesh is home to the Sundarbans, the world's largest mangrove forest, shared with India.",               capital:{name:"Dhaka",           lat:23.8103,   lng:90.4125}},
+    56:  { name:"Belgium",               iso2:"BE", religion:"Christianity (Catholic)",language:"Dutch, French, German",  fact:"Belgium has three official languages and produces over 220,000 tonnes of chocolate per year.",                capital:{name:"Brussels",        lat:50.8503,   lng:4.3517}},
+    64:  { name:"Bhutan",                iso2:"BT", religion:"Buddhism",               language:"Dzongkha",               fact:"Bhutan is the world's only carbon-negative country — it absorbs more CO₂ than it produces.",                  capital:{name:"Thimphu",         lat:27.4728,   lng:89.6390}},
+    68:  { name:"Bolivia",               iso2:"BO", religion:"Christianity (Catholic)",language:"Spanish, Quechua, Aymara",fact:"Bolivia has two capitals — Sucre (constitutional) and La Paz (seat of government), the world's highest.",    capital:{name:"Sucre",           lat:-19.0196,  lng:-65.2619}},
+    76:  { name:"Brazil",                iso2:"BR", religion:"Christianity",           language:"Portuguese",             fact:"Brazil is home to the Amazon Rainforest, which produces 20% of the world's oxygen.",                         capital:{name:"Brasília",        lat:-15.7942,  lng:-47.8822}},
+    100: { name:"Bulgaria",              iso2:"BG", religion:"Christianity (Orthodox)",language:"Bulgarian",              fact:"Bulgaria invented the Cyrillic alphabet in the 9th century AD.",                                             capital:{name:"Sofia",           lat:42.6977,   lng:23.3219}},
+    104: { name:"Myanmar",               iso2:"MM", religion:"Buddhism",               language:"Burmese",                fact:"Myanmar has over 2,000 Buddhist temples in the ancient city of Bagan alone.",                                capital:{name:"Naypyidaw",       lat:19.7633,   lng:96.0785}},
+    116: { name:"Cambodia",              iso2:"KH", religion:"Buddhism",               language:"Khmer",                  fact:"Angkor Wat in Cambodia is the largest religious monument in the world, covering 162 hectares.",               capital:{name:"Phnom Penh",      lat:11.5564,   lng:104.9282}},
+    120: { name:"Cameroon",              iso2:"CM", religion:"Christianity / Islam",   language:"French, English",        fact:"Cameroon is known as 'Africa in miniature' for its remarkable geographical and cultural diversity.",           capital:{name:"Yaoundé",         lat:3.8480,    lng:11.5021}},
+    124: { name:"Canada",                iso2:"CA", religion:"Christianity",           language:"English, French",        fact:"Canada has the longest coastline in the world at over 202,080 km — longer than the next 3 countries combined.", capital:{name:"Ottawa",          lat:45.4215,   lng:-75.6972}},
+    144: { name:"Sri Lanka",             iso2:"LK", religion:"Buddhism",               language:"Sinhala, Tamil",         fact:"Sri Lanka was the first country in the world to elect a female prime minister, in 1960.",                      capital:{name:"Sri Jayawardenepura Kotte", lat:6.9271, lng:79.8612}},
+    152: { name:"Chile",                 iso2:"CL", religion:"Christianity",           language:"Spanish",                fact:"Chile's Atacama Desert is the driest non-polar desert on Earth — some parts have never recorded rainfall.",    capital:{name:"Santiago",        lat:-33.4489,  lng:-70.6693}},
+    156: { name:"China",                 iso2:"CN", religion:"Buddhism / No religion", language:"Mandarin Chinese",       fact:"China invented paper, printing, gunpowder, and the compass — four inventions that changed the world.",         capital:{name:"Beijing",         lat:39.9042,   lng:116.4074}},
+    170: { name:"Colombia",              iso2:"CO", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Colombia is the only country in South America with coastlines on both the Pacific Ocean and the Caribbean Sea.",capital:{name:"Bogotá",          lat:4.7110,    lng:-74.0721}},
+    178: { name:"Republic of the Congo", iso2:"CG", religion:"Christianity",           language:"French",                 fact:"The Congo River is the world's deepest river, reaching depths of over 220 metres.",                           capital:{name:"Brazzaville",     lat:-4.2634,   lng:15.2429}},
+    180: { name:"DR Congo",              iso2:"CD", religion:"Christianity",           language:"French, Lingala",        fact:"The DRC contains the Congo Rainforest, the second-largest tropical rainforest on Earth.",                      capital:{name:"Kinshasa",        lat:-4.3217,   lng:15.3222}},
+    188: { name:"Costa Rica",            iso2:"CR", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Costa Rica has no standing army — it abolished its military in 1948 and redirected funds to education.",        capital:{name:"San José",        lat:9.9281,    lng:-84.0907}},
+    192: { name:"Cuba",                  iso2:"CU", religion:"Christianity / Santería",language:"Spanish",                fact:"Cuba has one of the highest literacy rates in the world at 99.8%.",                                           capital:{name:"Havana",          lat:23.1136,   lng:-82.3666}},
+    196: { name:"Cyprus",                iso2:"CY", religion:"Christianity (Orthodox)",language:"Greek, Turkish",         fact:"Cyprus is the birthplace of Aphrodite, the Greek goddess of love, according to mythology.",                    capital:{name:"Nicosia",         lat:35.1856,   lng:33.3823}},
+    203: { name:"Czech Republic",        iso2:"CZ", religion:"No religion / Christianity",language:"Czech",              fact:"The Czech Republic has the highest beer consumption per capita in the world — about 184 litres per person per year.", capital:{name:"Prague",       lat:50.0755,   lng:14.4378}},
+    208: { name:"Denmark",               iso2:"DK", religion:"Christianity (Lutheran)",language:"Danish",                 fact:"Denmark consistently ranks as one of the happiest countries in the world according to global happiness reports.", capital:{name:"Copenhagen",     lat:55.6761,   lng:12.5683}},
+    214: { name:"Dominican Republic",    iso2:"DO", religion:"Christianity (Catholic)",language:"Spanish",                fact:"The Dominican Republic is home to the highest peak in the Caribbean, Pico Duarte at 3,098 metres.",             capital:{name:"Santo Domingo",   lat:18.4861,   lng:-69.9312}},
+    218: { name:"Ecuador",               iso2:"EC", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Ecuador is named after the equator, which runs through the country. It's also home to the Galápagos Islands.",  capital:{name:"Quito",           lat:-0.1807,   lng:-78.4678}},
+    818: { name:"Egypt",                 iso2:"EG", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Egypt is home to the only surviving ancient wonder of the world — the Great Pyramid of Giza.",                capital:{name:"Cairo",           lat:30.0444,   lng:31.2357}},
+    222: { name:"El Salvador",           iso2:"SV", religion:"Christianity (Catholic)",language:"Spanish",                fact:"El Salvador is the smallest and most densely populated country in Central America.",                          capital:{name:"San Salvador",    lat:13.6929,   lng:-89.2182}},
+    231: { name:"Ethiopia",              iso2:"ET", religion:"Christianity / Islam",   language:"Amharic",                fact:"Ethiopia is the only African country never colonised (except for a brief Italian occupation). It uses its own calendar.", capital:{name:"Addis Ababa",lat:9.0320,    lng:38.7469}},
+    246: { name:"Finland",               iso2:"FI", religion:"Christianity (Lutheran)",language:"Finnish, Swedish",       fact:"Finland has more saunas than cars — approximately 3.3 million saunas for 5.5 million people.",                capital:{name:"Helsinki",        lat:60.1699,   lng:24.9384}},
+    250: { name:"France",                iso2:"FR", religion:"No religion / Christianity",language:"French",              fact:"France is the most visited country in the world, welcoming over 90 million tourists annually.",                capital:{name:"Paris",           lat:48.8566,   lng:2.3522}},
+    266: { name:"Gabon",                 iso2:"GA", religion:"Christianity",           language:"French",                 fact:"Over 85% of Gabon's territory is covered by pristine tropical rainforest.",                                   capital:{name:"Libreville",      lat:0.4162,    lng:9.4673}},
+    268: { name:"Georgia",               iso2:"GE", religion:"Christianity (Orthodox)",language:"Georgian",               fact:"Georgia has one of the oldest wine-making traditions in the world, dating back 8,000 years.",                  capital:{name:"Tbilisi",         lat:41.6938,   lng:44.8015}},
+    276: { name:"Germany",               iso2:"DE", religion:"Christianity",           language:"German",                 fact:"Germany has the largest economy in Europe and is home to over 1,500 different types of beer.",                capital:{name:"Berlin",          lat:52.5200,   lng:13.4050}},
+    288: { name:"Ghana",                 iso2:"GH", religion:"Christianity / Islam",   language:"English",                fact:"Ghana was the first sub-Saharan African country to gain independence, on 6 March 1957.",                       capital:{name:"Accra",           lat:5.6037,    lng:-0.1870}},
+    300: { name:"Greece",                iso2:"GR", religion:"Christianity (Orthodox)",language:"Greek",                  fact:"Greece has more archaeological museums than any other country in the world.",                                 capital:{name:"Athens",          lat:37.9838,   lng:23.7275}},
+    320: { name:"Guatemala",             iso2:"GT", religion:"Christianity",           language:"Spanish",                fact:"Guatemala's Lake Atitlán has been called 'the most beautiful lake in the world' by Aldous Huxley.",             capital:{name:"Guatemala City",  lat:14.6349,   lng:-90.5069}},
+    324: { name:"Guinea",                iso2:"GN", religion:"Islam",                  language:"French",                 fact:"Guinea contains nearly half of the world's proven reserves of bauxite, the ore used to produce aluminium.",     capital:{name:"Conakry",         lat:9.6412,    lng:-13.5784}},
+    332: { name:"Haiti",                 iso2:"HT", religion:"Christianity / Voodoo",  language:"French, Haitian Creole", fact:"Haiti was the first Black republic in the world, declaring independence in 1804 after a slave revolution.",    capital:{name:"Port-au-Prince",  lat:18.5944,   lng:-72.3074}},
+    340: { name:"Honduras",              iso2:"HN", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Honduras has the second-largest barrier reef system in the world off its Caribbean coast.",                    capital:{name:"Tegucigalpa",     lat:14.0818,   lng:-87.2068}},
+    348: { name:"Hungary",               iso2:"HU", religion:"Christianity",           language:"Hungarian",              fact:"Hungary has one of the most thermal spring-rich capitals — Budapest sits on over 120 natural hot springs.",      capital:{name:"Budapest",        lat:47.4979,   lng:19.0402}},
+    356: { name:"India",                 iso2:"IN", religion:"Hinduism",               language:"Hindi, English (+ 21 others)",fact:"India is the world's largest democracy and the birthplace of four major world religions.",              capital:{name:"New Delhi",       lat:28.6139,   lng:77.2090}},
+    360: { name:"Indonesia",             iso2:"ID", religion:"Islam (Sunni)",          language:"Indonesian (Bahasa)",    fact:"Indonesia is the world's largest archipelago nation with over 17,000 islands and the 4th most populous country.", capital:{name:"Jakarta",         lat:-6.2088,   lng:106.8456}},
+    364: { name:"Iran",                  iso2:"IR", religion:"Islam (Shia)",           language:"Persian (Farsi)",        fact:"Iran (Persia) is home to one of the world's oldest continuous civilisations, dating back 7,000 years.",        capital:{name:"Tehran",          lat:35.6892,   lng:51.3890}},
+    368: { name:"Iraq",                  iso2:"IQ", religion:"Islam",                  language:"Arabic, Kurdish",        fact:"Iraq is home to Mesopotamia — the 'Cradle of Civilisation' — where writing was first invented around 3,500 BCE.", capital:{name:"Baghdad",         lat:33.3152,   lng:44.3661}},
+    372: { name:"Ireland",               iso2:"IE", religion:"Christianity (Catholic)",language:"English, Irish (Gaelic)", fact:"Ireland is the only country in the world with a musical instrument (the harp) as its national symbol.",       capital:{name:"Dublin",          lat:53.3498,   lng:-6.2603}},
+    376: { name:"Israel",                iso2:"IL", religion:"Judaism",                language:"Hebrew, Arabic",         fact:"Israel leads the world in number of scientists and engineers per capita and in patents registered per capita.", capital:{name:"Jerusalem",       lat:31.7683,   lng:35.2137}},
+    380: { name:"Italy",                 iso2:"IT", religion:"Christianity (Catholic)",language:"Italian",                fact:"Italy is home to the largest number of UNESCO World Heritage Sites of any country in the world.",             capital:{name:"Rome",            lat:41.9028,   lng:12.4964}},
+    388: { name:"Jamaica",               iso2:"JM", religion:"Christianity",           language:"English",                fact:"Jamaica is the birthplace of reggae music and the Rastafari movement.",                                       capital:{name:"Kingston",        lat:17.9970,   lng:-76.7936}},
+    392: { name:"Japan",                 iso2:"JP", religion:"Shinto / Buddhism",      language:"Japanese",               fact:"Japan has the world's oldest continuous monarchy — its imperial family has reigned for over 2,600 years.",    capital:{name:"Tokyo",           lat:35.6762,   lng:139.6503}},
+    400: { name:"Jordan",                iso2:"JO", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Petra, Jordan's rock-carved city, was completely unknown to the Western world until 1812.",                    capital:{name:"Amman",           lat:31.9454,   lng:35.9284}},
+    398: { name:"Kazakhstan",            iso2:"KZ", religion:"Islam / No religion",    language:"Kazakh, Russian",        fact:"Kazakhstan is the world's largest landlocked country — about the size of Western Europe.",                     capital:{name:"Astana",          lat:51.1801,   lng:71.4460}},
+    404: { name:"Kenya",                 iso2:"KE", religion:"Christianity",           language:"English, Swahili",       fact:"Kenya's Great Rift Valley is where some of the earliest human fossils have been discovered.",                  capital:{name:"Nairobi",         lat:-1.2921,   lng:36.8219}},
+    408: { name:"North Korea",           iso2:"KP", religion:"No religion (state)",    language:"Korean",                 fact:"North Korea uses its own calendar system — 'Juche' — where year 1 is 1912, the birth year of Kim Il-sung.",  capital:{name:"Pyongyang",       lat:39.0194,   lng:125.7381}},
+    410: { name:"South Korea",           iso2:"KR", religion:"No religion / Christianity",language:"Korean",              fact:"South Korea is the world's most connected country — it has the fastest average internet speed globally.",     capital:{name:"Seoul",           lat:37.5665,   lng:126.9780}},
+    414: { name:"Kuwait",                iso2:"KW", religion:"Islam",                  language:"Arabic",                 fact:"Kuwait has one of the highest GDP per capita in the world, fuelled almost entirely by oil reserves.",          capital:{name:"Kuwait City",     lat:29.3759,   lng:47.9774}},
+    418: { name:"Laos",                  iso2:"LA", religion:"Buddhism",               language:"Lao",                    fact:"Laos is the most heavily bombed country per capita in history — a legacy of the Vietnam War era.",             capital:{name:"Vientiane",       lat:17.9757,   lng:102.6331}},
+    422: { name:"Lebanon",               iso2:"LB", religion:"Christianity / Islam",   language:"Arabic",                 fact:"Lebanon is home to the Cedars of God, ancient trees mentioned in the Bible and over 3,000 years old.",         capital:{name:"Beirut",          lat:33.8938,   lng:35.5018}},
+    430: { name:"Liberia",               iso2:"LR", religion:"Christianity",           language:"English",                fact:"Liberia was founded in 1822 by freed American slaves and is Africa's oldest republic.",                        capital:{name:"Monrovia",        lat:6.3004,    lng:-10.7969}},
+    434: { name:"Libya",                 iso2:"LY", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Libya has the largest proven oil reserves in Africa.",                                                       capital:{name:"Tripoli",         lat:32.9011,   lng:13.1839}},
+    440: { name:"Lithuania",             iso2:"LT", religion:"Christianity (Catholic)",language:"Lithuanian",             fact:"Lithuania's capital Vilnius has one of the largest Old Towns in Europe, a UNESCO World Heritage Site.",       capital:{name:"Vilnius",         lat:54.6872,   lng:25.2797}},
+    442: { name:"Luxembourg",            iso2:"LU", religion:"Christianity (Catholic)",language:"Luxembourgish, French, German",fact:"Luxembourg has the highest GDP per capita in the world.",                                           capital:{name:"Luxembourg City", lat:49.6117,   lng:6.1319}},
+    484: { name:"Mexico",                iso2:"MX", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Mexico City is built on an ancient lake bed and sinks about 10 cm per year.",                                capital:{name:"Mexico City",     lat:19.4326,   lng:-99.1332}},
+    458: { name:"Malaysia",              iso2:"MY", religion:"Islam",                  language:"Malay",                  fact:"Malaysia is home to the Rafflesia, the world's largest flower, which can grow up to 1 metre in diameter.",   capital:{name:"Kuala Lumpur",    lat:3.1390,    lng:101.6869}},
+    466: { name:"Mali",                  iso2:"ML", religion:"Islam",                  language:"French",                 fact:"Mali's Timbuktu was once one of the world's great centres of Islamic scholarship, with over 150 Quranic schools.", capital:{name:"Bamako",       lat:12.6392,   lng:-8.0029}},
+    496: { name:"Mongolia",              iso2:"MN", religion:"Buddhism / Shamanism",   language:"Mongolian",              fact:"Mongolia has the lowest population density of any country — roughly 2 people per square kilometre.",          capital:{name:"Ulaanbaatar",     lat:47.8864,   lng:106.9057}},
+    504: { name:"Morocco",               iso2:"MA", religion:"Islam (Sunni)",          language:"Arabic, Berber",         fact:"Morocco's ancient city of Fes has the world's oldest continuously operating university, founded in 859 AD.",  capital:{name:"Rabat",           lat:34.0209,   lng:-6.8416}},
+    508: { name:"Mozambique",            iso2:"MZ", religion:"Christianity / Islam",   language:"Portuguese",             fact:"Mozambique's flag is the only national flag in the world to feature an AK-47.",                              capital:{name:"Maputo",          lat:-25.9692,  lng:32.5732}},
+    516: { name:"Namibia",               iso2:"NA", religion:"Christianity",           language:"English",                fact:"The Namib Desert is the oldest desert in the world, estimated to be 55–80 million years old.",               capital:{name:"Windhoek",        lat:-22.5597,  lng:17.0832}},
+    524: { name:"Nepal",                 iso2:"NP", religion:"Hinduism",               language:"Nepali",                 fact:"Nepal contains eight of the world's ten highest mountains, including Mount Everest.",                        capital:{name:"Kathmandu",       lat:27.7172,   lng:85.3240}},
+    528: { name:"Netherlands",           iso2:"NL", religion:"No religion / Christianity",language:"Dutch",               fact:"The Netherlands has more bicycles than people — roughly 23 million bikes for 17.5 million citizens.",         capital:{name:"Amsterdam",       lat:52.3676,   lng:4.9041}},
+    554: { name:"New Zealand",           iso2:"NZ", religion:"No religion / Christianity",language:"English, Māori",      fact:"New Zealand was the first country to give women the right to vote, in 1893.",                               capital:{name:"Wellington",      lat:-41.2866,  lng:174.7756}},
+    562: { name:"Niger",                 iso2:"NE", religion:"Islam",                  language:"French",                 fact:"Niger has the world's largest uranium deposits and is one of its top producers.",                           capital:{name:"Niamey",          lat:13.5137,   lng:2.1098}},
+    566: { name:"Nigeria",               iso2:"NG", religion:"Islam / Christianity",   language:"English",                fact:"Nigeria is Africa's most populous country and has the largest economy on the continent.",                    capital:{name:"Abuja",           lat:9.0765,    lng:7.3986}},
+    578: { name:"Norway",                iso2:"NO", religion:"Christianity (Lutheran)",language:"Norwegian",              fact:"Norway has over 50,000 islands and more than 1,000 fjords, making it one of the most dramatic coastlines on Earth.", capital:{name:"Oslo",          lat:59.9139,   lng:10.7522}},
+    512: { name:"Oman",                  iso2:"OM", religion:"Islam (Ibadi)",          language:"Arabic",                 fact:"Oman has been continuously inhabited for at least 106,000 years, making it one of the oldest inhabited regions on Earth.", capital:{name:"Muscat",       lat:23.5880,   lng:58.3829}},
+    586: { name:"Pakistan",              iso2:"PK", religion:"Islam (Sunni)",          language:"Urdu, English",          fact:"Pakistan has the world's second-largest salt mine — the Khewra Salt Mine, which has been mined since the 1200s.", capital:{name:"Islamabad",      lat:33.6844,   lng:73.0479}},
+    591: { name:"Panama",                iso2:"PA", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Panama is the only place on Earth where you can watch the sun rise over the Pacific and set over the Atlantic.", capital:{name:"Panama City",    lat:8.9936,    lng:-79.5197}},
+    598: { name:"Papua New Guinea",      iso2:"PG", religion:"Christianity",           language:"English, Tok Pisin",     fact:"Papua New Guinea has the greatest linguistic diversity on Earth — over 800 distinct languages.",              capital:{name:"Port Moresby",    lat:-9.4438,   lng:147.1803}},
+    600: { name:"Paraguay",              iso2:"PY", religion:"Christianity (Catholic)",language:"Spanish, Guaraní",       fact:"Paraguay is one of the few countries where the indigenous language (Guaraní) is an official national language.",  capital:{name:"Asunción",        lat:-25.2867,  lng:-57.6470}},
+    604: { name:"Peru",                  iso2:"PE", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Peru is home to Machu Picchu, and the potato was first cultivated in the Andes over 8,000 years ago.",        capital:{name:"Lima",            lat:-12.0464,  lng:-77.0428}},
+    608: { name:"Philippines",           iso2:"PH", religion:"Christianity (Catholic)",language:"Filipino, English",      fact:"The Philippines is an archipelago of over 7,640 islands, the world's second-largest after Indonesia.",         capital:{name:"Manila",          lat:14.5995,   lng:120.9842}},
+    616: { name:"Poland",                iso2:"PL", religion:"Christianity (Catholic)",language:"Polish",                 fact:"Poland is home to the Białowieża Forest, one of the last and largest primeval forests in Europe.",            capital:{name:"Warsaw",          lat:52.2297,   lng:21.0122}},
+    620: { name:"Portugal",              iso2:"PT", religion:"Christianity (Catholic)",language:"Portuguese",             fact:"Portugal is the oldest nation-state in Europe, with borders largely unchanged since 1139.",                   capital:{name:"Lisbon",          lat:38.7169,   lng:-9.1399}},
+    634: { name:"Qatar",                 iso2:"QA", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Qatar has the highest GDP per capita in the world and is the smallest country to host the FIFA World Cup.",   capital:{name:"Doha",            lat:25.2854,   lng:51.5310}},
+    642: { name:"Romania",               iso2:"RO", religion:"Christianity (Orthodox)",language:"Romanian",               fact:"Romania is home to Transylvania and the real Bran Castle, which inspired Bram Stoker's Dracula.",            capital:{name:"Bucharest",       lat:44.4268,   lng:26.1025}},
+    643: { name:"Russia",                iso2:"RU", religion:"Christianity (Orthodox)",language:"Russian",                fact:"Russia spans 11 time zones and is larger than Pluto — covering about 11% of the Earth's total land area.",    capital:{name:"Moscow",          lat:55.7558,   lng:37.6176}},
+    646: { name:"Rwanda",                iso2:"RW", religion:"Christianity",           language:"Kinyarwanda, French, English",fact:"Rwanda has the highest proportion of female parliamentarians in the world — over 60% of its parliament is women.", capital:{name:"Kigali",      lat:-1.9706,   lng:30.1044}},
+    682: { name:"Saudi Arabia",          iso2:"SA", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Saudi Arabia has no rivers — it is the largest country in the world with no permanent rivers.",               capital:{name:"Riyadh",          lat:24.7136,   lng:46.6753}},
+    686: { name:"Senegal",               iso2:"SN", religion:"Islam",                  language:"French",                 fact:"Senegal is home to the Pink Lake (Lac Rose), a lake with water so salty it sometimes turns flamingo pink.",    capital:{name:"Dakar",           lat:14.7167,   lng:-17.4677}},
+    694: { name:"Sierra Leone",          iso2:"SL", religion:"Islam / Christianity",   language:"English",                fact:"Sierra Leone's name means 'Lion Mountain' in Portuguese — named by Portuguese explorer Pedro de Sintra in 1462.", capital:{name:"Freetown",        lat:8.4657,    lng:-13.2317}},
+    703: { name:"Slovakia",              iso2:"SK", religion:"Christianity (Catholic)",language:"Slovak",                 fact:"Slovakia has the highest number of castles and chateaux per capita in the world.",                          capital:{name:"Bratislava",      lat:48.1486,   lng:17.1077}},
+    705: { name:"Slovenia",              iso2:"SI", religion:"Christianity (Catholic)",language:"Slovenian",              fact:"Slovenia is the only country in the world whose name contains the word 'love' (Slo-LOVE-nia).",              capital:{name:"Ljubljana",       lat:46.0569,   lng:14.5058}},
+    706: { name:"Somalia",               iso2:"SO", religion:"Islam (Sunni)",          language:"Somali, Arabic",         fact:"Somalia has the longest coastline of any country in mainland Africa at about 3,333 km.",                    capital:{name:"Mogadishu",       lat:2.0469,    lng:45.3182}},
+    710: { name:"South Africa",          iso2:"ZA", religion:"Christianity",           language:"11 official languages",  fact:"South Africa is the only country to have voluntarily dismantled its nuclear weapons programme.",            capital:{name:"Pretoria",        lat:-25.7479,  lng:28.2293}},
+    724: { name:"Spain",                 iso2:"ES", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Spain is home to La Tomatina, an annual festival where thousands of people throw tomatoes at each other.",   capital:{name:"Madrid",          lat:40.4168,   lng:-3.7038}},
+    729: { name:"Sudan",                 iso2:"SD", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Sudan has more ancient pyramids than Egypt — over 200 pyramids built by the Nubian kingdoms.",               capital:{name:"Khartoum",        lat:15.5007,   lng:32.5599}},
+    728: { name:"South Sudan",           iso2:"SS", religion:"Christianity / Islam",   language:"English",                fact:"South Sudan is the world's youngest country, having gained independence from Sudan in 2011.",               capital:{name:"Juba",            lat:4.8594,    lng:31.5713}},
+    752: { name:"Sweden",                iso2:"SE", religion:"Christianity (Lutheran)",language:"Swedish",                fact:"Sweden invented the seatbelt, the pacemaker, dynamite, Bluetooth, and the zip (Zipper).",                  capital:{name:"Stockholm",       lat:59.3293,   lng:18.0686}},
+    756: { name:"Switzerland",           iso2:"CH", religion:"Christianity",           language:"German, French, Italian, Romansh",fact:"Switzerland has been officially neutral in all wars since 1815 and has not fought in any war since then.", capital:{name:"Bern",           lat:46.9480,   lng:7.4474}},
+    760: { name:"Syria",                 iso2:"SY", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Damascus is widely considered to be the oldest continuously inhabited capital city in the world.",            capital:{name:"Damascus",        lat:33.5138,   lng:36.2765}},
+    158: { name:"Taiwan",                iso2:"TW", religion:"Buddhism / Taoism",      language:"Mandarin Chinese",       fact:"Taiwan is known as the 'Silicon Valley of Asia' and produces over 90% of the world's most advanced semiconductors.", capital:{name:"Taipei",         lat:25.0330,   lng:121.5654}},
+    762: { name:"Tajikistan",            iso2:"TJ", religion:"Islam (Sunni)",          language:"Tajik, Russian",         fact:"Over 90% of Tajikistan is covered by mountains, making it the most mountainous country in Central Asia.",     capital:{name:"Dushanbe",        lat:38.5598,   lng:68.7734}},
+    834: { name:"Tanzania",              iso2:"TZ", religion:"Christianity / Islam",   language:"Swahili, English",       fact:"Tanzania is home to Africa's highest peak, Mount Kilimanjaro, and the Serengeti — site of the Great Migration.", capital:{name:"Dodoma",         lat:-6.1722,   lng:35.7395}},
+    764: { name:"Thailand",              iso2:"TH", religion:"Buddhism",               language:"Thai",                   fact:"Thailand is the only country in Southeast Asia that was never colonised by a European power.",             capital:{name:"Bangkok",         lat:13.7563,   lng:100.5018}},
+    768: { name:"Togo",                  iso2:"TG", religion:"Christianity / Islam",   language:"French",                 fact:"Togo's Lake Togo is a lagoon that extends 50 km along the coast, naturally separated from the ocean by a sandbar.", capital:{name:"Lomé",           lat:6.1375,    lng:1.2123}},
+    788: { name:"Tunisia",               iso2:"TN", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Tunisia's ancient city of Carthage was once the most powerful rival to Rome in the Mediterranean world.",    capital:{name:"Tunis",           lat:36.8190,   lng:10.1658}},
+    792: { name:"Turkey",                iso2:"TR", religion:"Islam (Sunni)",          language:"Turkish",                fact:"Turkey is home to Troy, Ephesus, and Cappadocia — some of the most remarkable ancient sites in the world.",  capital:{name:"Ankara",          lat:39.9334,   lng:32.8597}},
+    795: { name:"Turkmenistan",          iso2:"TM", religion:"Islam (Sunni)",          language:"Turkmen",                fact:"Turkmenistan has a crater called the 'Door to Hell' that has been burning continuously since 1971.",            capital:{name:"Ashgabat",        lat:37.9601,   lng:58.3261}},
+    800: { name:"Uganda",                iso2:"UG", religion:"Christianity",           language:"English, Swahili",       fact:"Uganda has the world's second-largest freshwater lake — Lake Victoria — which it shares with Kenya and Tanzania.", capital:{name:"Kampala",       lat:0.3476,    lng:32.5825}},
+    804: { name:"Ukraine",               iso2:"UA", religion:"Christianity (Orthodox)",language:"Ukrainian",              fact:"Ukraine is the largest country located entirely within Europe and is one of the world's top wheat exporters.", capital:{name:"Kyiv",            lat:50.4501,   lng:30.5234}},
+    784: { name:"United Arab Emirates",  iso2:"AE", religion:"Islam",                  language:"Arabic",                 fact:"The UAE went from a desert with no paved roads in 1960 to one of the world's most modern nations in just 60 years.", capital:{name:"Abu Dhabi",      lat:24.4539,   lng:54.3773}},
+    826: { name:"United Kingdom",        iso2:"GB", religion:"Christianity",           language:"English",                fact:"The UK is home to the world's oldest public railway, opened in 1825, and invented the World Wide Web in 1989.", capital:{name:"London",          lat:51.5074,   lng:-0.1278}},
+    840: { name:"United States",         iso2:"US", religion:"Christianity",           language:"English",                fact:"The US has the world's largest economy and has put 12 people on the Moon — the only country ever to do so.",  capital:{name:"Washington D.C.", lat:38.9072,   lng:-77.0369}},
+    858: { name:"Uruguay",               iso2:"UY", religion:"No religion / Christianity",language:"Spanish",             fact:"Uruguay was the first country in the world to make secondary education compulsory and to fully legalise marijuana.", capital:{name:"Montevideo",    lat:-34.9011,  lng:-56.1645}},
+    860: { name:"Uzbekistan",            iso2:"UZ", religion:"Islam (Sunni)",          language:"Uzbek",                  fact:"Uzbekistan's Samarkand was one of the most important cities on the ancient Silk Road.",                      capital:{name:"Tashkent",        lat:41.2995,   lng:69.2401}},
+    862: { name:"Venezuela",             iso2:"VE", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Venezuela has Angel Falls, the world's highest uninterrupted waterfall, plunging 979 metres.",               capital:{name:"Caracas",         lat:10.4806,   lng:-66.9036}},
+    704: { name:"Vietnam",               iso2:"VN", religion:"Buddhism / No religion", language:"Vietnamese",             fact:"Vietnam has over 3,260 km of coastline and is home to Ha Long Bay, a UNESCO World Heritage Site.",           capital:{name:"Hanoi",           lat:21.0285,   lng:105.8542}},
+    887: { name:"Yemen",                 iso2:"YE", religion:"Islam",                  language:"Arabic",                 fact:"Yemen is home to the island of Socotra, called the 'Galápagos of the Indian Ocean' for its unique wildlife.",  capital:{name:"Sana'a",          lat:15.3694,   lng:44.1910}},
+    894: { name:"Zambia",                iso2:"ZM", religion:"Christianity",           language:"English",                fact:"Zambia shares Victoria Falls with Zimbabwe — at 1.7 km wide, it's the world's largest waterfall by area.",     capital:{name:"Lusaka",          lat:-15.3875,  lng:28.3228}},
+    716: { name:"Zimbabwe",              iso2:"ZW", religion:"Christianity",           language:"16 official languages",  fact:"Zimbabwe has 16 official languages — the most of any country in the world.",                               capital:{name:"Harare",          lat:-17.8252,  lng:31.0335}},
+    // Additional countries
+    70:  { name:"Bosnia & Herzegovina",  iso2:"BA", religion:"Islam / Christianity",   language:"Bosnian, Croatian, Serbian",fact:"Bosnia is home to Europe's last primeval forest, Perućica, which has never been touched by humans.",         capital:{name:"Sarajevo",        lat:43.8476,   lng:18.3564}},
+    112: { name:"Belarus",               iso2:"BY", religion:"Christianity (Orthodox)",language:"Belarusian, Russian",    fact:"Belarus has the largest primeval forest in Europe — Białowieża — shared with Poland.",                      capital:{name:"Minsk",           lat:53.9045,   lng:27.5615}},
+    191: { name:"Croatia",               iso2:"HR", religion:"Christianity (Catholic)",language:"Croatian",               fact:"Croatia has 1,246 islands, making it one of the most island-rich countries in the Mediterranean.",           capital:{name:"Zagreb",          lat:45.8150,   lng:15.9819}},
+    233: { name:"Estonia",               iso2:"EE", religion:"No religion / Christianity",language:"Estonian",             fact:"Estonia was the first country to declare the internet a human right, back in 2000.",                        capital:{name:"Tallinn",         lat:59.4370,   lng:24.7536}},
+    352: { name:"Iceland",               iso2:"IS", religion:"Christianity (Lutheran)",language:"Icelandic",              fact:"Iceland is home to one-third of the world's active volcanoes and runs almost entirely on renewable energy.",  capital:{name:"Reykjavík",       lat:64.1466,   lng:-21.9426}},
+    428: { name:"Latvia",                iso2:"LV", religion:"Christianity",           language:"Latvian",                fact:"Latvia has the highest number of amateur choral singers per capita in the world.",                          capital:{name:"Riga",            lat:56.9496,   lng:24.1052}},
+    498: { name:"Moldova",               iso2:"MD", religion:"Christianity (Orthodox)",language:"Romanian",               fact:"Moldova has one of the world's largest wine collections — the Cricova winery has 120 km of underground tunnels.", capital:{name:"Chișinău",       lat:47.0105,   lng:28.8638}},
+    499: { name:"Montenegro",            iso2:"ME", religion:"Christianity (Orthodox)",language:"Montenegrin",            fact:"Montenegro's name literally means 'Black Mountain' — from the dark appearance of Mount Lovćen.",               capital:{name:"Podgorica",       lat:42.4304,   lng:19.2594}},
+    807: { name:"North Macedonia",       iso2:"MK", religion:"Christianity (Orthodox)",language:"Macedonian",             fact:"North Macedonia's Lake Ohrid is one of Europe's deepest and oldest lakes, estimated to be 3–5 million years old.", capital:{name:"Skopje",         lat:41.9981,   lng:21.4254}},
+    688: { name:"Serbia",                iso2:"RS", religion:"Christianity (Orthodox)",language:"Serbian",                fact:"Serbia is the world's largest exporter of raspberries — providing about 95% of the world's supply.",        capital:{name:"Belgrade",        lat:44.8176,   lng:20.4569}},
+    702: { name:"Singapore",             iso2:"SG", religion:"Buddhism / Islam / Christianity",language:"English, Mandarin, Malay, Tamil",fact:"Singapore is one of only three surviving city-states in the world and went from third-world to first-world in a single generation.", capital:{name:"Singapore",       lat:1.3521,    lng:103.8198}},
+    626: { name:"Timor-Leste",           iso2:"TL", religion:"Christianity (Catholic)",language:"Tetum, Portuguese",      fact:"Timor-Leste is one of the world's youngest nations, having gained independence in 2002.",                    capital:{name:"Dili",            lat:-8.5569,   lng:125.5603}},
+    450: { name:"Madagascar",            iso2:"MG", religion:"Christianity / Traditional",language:"Malagasy, French",   fact:"Madagascar is home to 5% of all species on Earth, with over 90% found nowhere else in the world.",          capital:{name:"Antananarivo",    lat:-18.9249,  lng:47.5185}},
+    454: { name:"Malawi",                iso2:"MW", religion:"Christianity",           language:"English, Chichewa",       fact:"Lake Malawi contains more fish species than any other lake in the world — over 1,000 species.",            capital:{name:"Lilongwe",        lat:-13.9669,  lng:33.7873}},
+    478: { name:"Mauritania",            iso2:"MR", religion:"Islam (Sunni)",          language:"Arabic",                 fact:"Mauritania is one of the last countries in the world to officially abolish slavery, doing so in 1981.",     capital:{name:"Nouakchott",      lat:18.0735,   lng:-15.9582}},
+    108: { name:"Burundi",               iso2:"BI", religion:"Christianity",           language:"Kirundi, French",        fact:"Burundi is one of the few countries in the world that performs the royal drum ceremony, a UNESCO cultural heritage.", capital:{name:"Gitega",         lat:-3.4271,   lng:29.9246}},
+    140: { name:"Central African Rep.",  iso2:"CF", religion:"Christianity / Islam",   language:"French, Sango",          fact:"The Central African Republic has some of the world's darkest skies, making it a prime location for stargazing.", capital:{name:"Bangui",         lat:4.3612,    lng:18.5550}},
+    148: { name:"Chad",                  iso2:"TD", religion:"Islam / Christianity",   language:"French, Arabic",         fact:"Chad's Lake Chad was once one of Africa's largest lakes — it has shrunk by 90% over the last 50 years due to climate change.", capital:{name:"N'Djamena",   lat:12.1048,   lng:15.0445}},
+    226: { name:"Equatorial Guinea",     iso2:"GQ", religion:"Christianity (Catholic)",language:"Spanish, French, Portuguese",fact:"Equatorial Guinea is the only African country with Spanish as an official language.",                    capital:{name:"Malabo",          lat:3.7523,    lng:8.7810}},
+    232: { name:"Eritrea",               iso2:"ER", religion:"Christianity / Islam",   language:"Tigrinya, Arabic",       fact:"Eritrea has one of the world's lowest rates of internet access — only about 1% of the population is online.", capital:{name:"Asmara",          lat:15.3229,   lng:38.9251}},
+    558: { name:"Nicaragua",             iso2:"NI", religion:"Christianity (Catholic)",language:"Spanish",                fact:"Nicaragua is known as the 'Land of Lakes and Volcanoes' and has the largest lake in Central America.",         capital:{name:"Managua",         lat:12.1364,   lng:-86.2514}},
+    780: { name:"Trinidad & Tobago",     iso2:"TT", religion:"Christianity / Hinduism",language:"English",                fact:"Trinidad and Tobago is the birthplace of calypso, steelpan music, and the Carnival celebration.",            capital:{name:"Port of Spain",   lat:10.6549,   lng:-61.5019}},
+    328: { name:"Guyana",                iso2:"GY", religion:"Christianity / Hinduism",language:"English",                fact:"Guyana is the only English-speaking country in South America.",                                           capital:{name:"Georgetown",      lat:6.8013,    lng:-58.1551}},
+    384: { name:"Ivory Coast",           iso2:"CI", religion:"Islam / Christianity",   language:"French",                 fact:"Ivory Coast is the world's largest producer of cocoa beans, accounting for about 40% of global supply.",   capital:{name:"Yamoussoukro",    lat:6.8277,    lng:-5.2893}},
+    270: { name:"Gambia",                iso2:"GM", religion:"Islam",                  language:"English",                fact:"Gambia is the smallest country in mainland Africa and is almost entirely surrounded by Senegal.",            capital:{name:"Banjul",          lat:13.4531,   lng:-16.5775}},
+    624: { name:"Guinea-Bissau",         iso2:"GW", religion:"Islam / Traditional",   language:"Portuguese",             fact:"Guinea-Bissau has the Bijagós Archipelago, a UNESCO Biosphere Reserve with over 88 islands.",               capital:{name:"Bissau",          lat:11.8816,   lng:-15.6178}},
+    748: { name:"Eswatini",              iso2:"SZ", religion:"Christianity",           language:"Swati, English",         fact:"Eswatini (Swaziland) is one of the last absolute monarchies in the world.",                              capital:{name:"Mbabane",         lat:-26.3054,  lng:31.1367}},
+    426: { name:"Lesotho",               iso2:"LS", religion:"Christianity",           language:"Sesotho, English",       fact:"Lesotho is one of only three countries in the world entirely surrounded by another country (South Africa).", capital:{name:"Maseru",          lat:-29.3167,  lng:27.4833}},
+    174: { name:"Comoros",               iso2:"KM", religion:"Islam (Sunni)",          language:"Arabic, French, Comorian",fact:"Comoros is home to ylang-ylang flower, used in Chanel No. 5 perfume — it's the world's top producer.",     capital:{name:"Moroni",          lat:-11.7022,  lng:43.2551}},
+    204: { name:"Benin",                 iso2:"BJ", religion:"Christianity / Islam / Voodoo",language:"French",           fact:"Benin is considered the birthplace of Voodoo, which remains an official religion practised by about 17% of the population.", capital:{name:"Porto-Novo",   lat:6.3703,    lng:2.3912}},
+    854: { name:"Burkina Faso",          iso2:"BF", religion:"Islam / Christianity",   language:"French",                 fact:"Burkina Faso means 'Land of Incorruptible People' in the Mossi and Dyula languages.",                        capital:{name:"Ouagadougou",     lat:12.3569,   lng:-1.5352}},
+    262: { name:"Djibouti",              iso2:"DJ", religion:"Islam (Sunni)",          language:"French, Arabic",         fact:"Djibouti is home to Lake Assal, the lowest point in Africa at 155 metres below sea level.",                  capital:{name:"Djibouti City",   lat:11.5886,   lng:43.1451}},
+    266: { name:"Gabon",                 iso2:"GA", religion:"Christianity",           language:"French",                 fact:"Over 85% of Gabon's territory is covered by pristine tropical rainforest.",                                   capital:{name:"Libreville",      lat:0.4162,    lng:9.4673}},
+    492: { name:"Monaco",                iso2:"MC", religion:"Christianity (Catholic)",language:"French",                 fact:"Monaco is the world's second-smallest country and the most densely populated sovereign nation.",             capital:{name:"Monaco",          lat:43.7384,   lng:7.4246}},
+    242: { name:"Fiji",                  iso2:"FJ", religion:"Christianity / Hinduism",language:"English, Fijian, Hindi", fact:"Fiji was the first Pacific island nation to become a republic and has 332 islands, of which 110 are inhabited.", capital:{name:"Suva",           lat:-18.1416,  lng:178.4419}},
+    678: { name:"São Tomé & Príncipe",   iso2:"ST", religion:"Christianity (Catholic)",language:"Portuguese",             fact:"São Tomé and Príncipe is one of Africa's smallest nations and sits almost exactly on the Equator.",          capital:{name:"São Tomé",        lat:0.3365,    lng:6.7273}},
+    132: { name:"Cape Verde",            iso2:"CV", religion:"Christianity (Catholic)",language:"Portuguese, Cape Verdean Creole",fact:"Cape Verde has no indigenous population — it was first discovered and settled by the Portuguese in the 1460s.", capital:{name:"Praia",          lat:14.9305,   lng:-23.5133}},
+    96:  { name:"Brunei",                iso2:"BN", religion:"Islam (Sunni)",          language:"Malay",                  fact:"Brunei is one of the world's smallest countries but has one of the highest standards of living in Asia, largely from oil wealth.", capital:{name:"Bandar Seri Begawan", lat:4.9031, lng:114.9398}},
+    44:  { name:"The Bahamas",           iso2:"BS", religion:"Christianity",           language:"English",                fact:"The Bahamas consists of over 700 islands and was where Christopher Columbus first landed in the Americas in 1492.", capital:{name:"Nassau",          lat:25.0480,   lng:-77.3554}},
+    84:  { name:"Belize",                iso2:"BZ", religion:"Christianity",           language:"English",                fact:"Belize is home to the Blue Hole, the world's largest sea sinkhole at 300 metres wide and 125 metres deep.",   capital:{name:"Belmopan",        lat:17.2514,   lng:-88.7590}},
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  //  D3 Map Initialisation
+  // ─────────────────────────────────────────────────────────────
+  const svg      = d3.select('#world-map');
+  const tooltip  = document.getElementById('tooltip');
+  const hint     = document.getElementById('hint');
+  const searchEl = document.getElementById('search');
+
+  let width, height, projection, path, g, capitalGroup;
+  let currentHighlighted = null;
+
+  function getSize() {
+    width  = window.innerWidth;
+    height = window.innerHeight;
+  }
+
+  function buildProjection() {
+    projection = d3.geoNaturalEarth1()
+      .scale(Math.min(width / 6.3, height / 3.5))
+      .translate([width / 2, height / 2]);
+    path = d3.geoPath().projection(projection);
+  }
+
+  function init(world) {
+    getSize();
+    buildProjection();
+
+    svg.selectAll('*').remove();
+
+    // Sphere (ocean background)
+    g = svg.append('g');
+    g.append('path')
+      .datum({type:'Sphere'})
+      .attr('class','sphere')
+      .attr('d', path);
+
+    // Graticule
+    const graticule = d3.geoGraticule()();
+    g.append('path')
+      .datum(graticule)
+      .attr('class','graticule')
+      .attr('d', path);
+
+    // Country paths
+    const countries = topojson.feature(world, world.objects.countries).features;
+
+    g.selectAll('.country')
+      .data(countries)
+      .join('path')
+        .attr('class','country')
+        .attr('id', d => 'c' + d.id)
+        .attr('title', d => COUNTRY_DATA[d.id]?.name || 'Unknown')
+        .attr('d', path)
+        .on('mousemove', onCountryMousemove)
+        .on('mouseleave', onCountryMouseleave);
+
+    // Capital dot layer (above countries)
+    capitalGroup = g.append('g').attr('id','capital-layer');
+
+    // Search handler
+    searchEl.addEventListener('input', onSearch);
+    searchEl.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { searchEl.value = ''; onSearch(); }
+    });
+
+    // Resize
+    window.addEventListener('resize', () => {
+      getSize(); buildProjection();
+      g.selectAll('.country').attr('d', path);
+      g.selectAll('.sphere').attr('d', path);
+      g.selectAll('.graticule').attr('d', path);
+    });
+  }
+
+  // ── Tooltip rendering ──────────────────────────────────────
+  function showTooltip(data, x, y) {
+    if (!data) {
+      tooltip.innerHTML = `<div class="tt-no-data">No data available for this territory</div>`;
+    } else {
+      const flag = toFlag(data.iso2);
+      tooltip.innerHTML = `
+        <div class="tt-header">
+          <span class="tt-flag">${flag}</span>
+          <span class="tt-name">${data.name}</span>
+        </div>
+        <div class="tt-row"><span class="tt-label">Religion</span><span class="tt-value">${data.religion}</span></div>
+        <div class="tt-row"><span class="tt-label">Language</span><span class="tt-value">${data.language}</span></div>
+        <div class="tt-fact">💡 ${data.fact}</div>
+      `;
+    }
+    tooltip.style.display = 'block';
+    positionTooltip(x, y);
+  }
+
+  function positionTooltip(x, y) {
+    const tt  = tooltip;
+    const tw  = tt.offsetWidth  || 280;
+    const th  = tt.offsetHeight || 160;
+    const pad = 14;
+    let left  = x + pad;
+    let top   = y - th / 2;
+    // Flip horizontal if near right edge
+    if (left + tw + pad > width)  left = x - tw - pad;
+    // Clamp vertical
+    if (top < pad)                top = pad;
+    if (top + th + pad > height)  top = height - th - pad;
+    tt.style.left = left + 'px';
+    tt.style.top  = top  + 'px';
+  }
+
+  function hideTooltip() {
+    tooltip.style.display = 'none';
+  }
+
+  // ── Capital dot ────────────────────────────────────────────
+  function showCapitalDot(data) {
+    capitalGroup.selectAll('*').remove();
+    if (!data?.capital) return;
+    const coords = projection([data.capital.lng, data.capital.lat]);
+    if (!coords) return;
+    capitalGroup.append('circle')
+      .attr('class','capital-dot')
+      .attr('cx', coords[0])
+      .attr('cy', coords[1])
+      .attr('r',  4);
+    capitalGroup.append('text')
+      .attr('class','capital-label')
+      .attr('x', coords[0])
+      .attr('y', coords[1] - 8)
+      .text(data.capital.name);
+  }
+
+  function hideCapitalDot() {
+    capitalGroup?.selectAll('*').remove();
+  }
+
+  // ── Mouse event handlers ───────────────────────────────────
+  function onCountryMousemove(event, d) {
+    const data = COUNTRY_DATA[d.id] || null;
+    const el = d3.select(this);
+
+    // Only highlight if not search-highlighted
+    if (!el.classed('highlighted')) {
+      el.raise();
+    }
+
+    showTooltip(data, event.clientX, event.clientY);
+    showCapitalDot(data);
+
+    hint.style.opacity = '0';
+  }
+
+  function onCountryMouseleave(event, d) {
+    // Don't clear if this was search-highlighted
+    const el = d3.select(this);
+    hideTooltip();
+    if (!el.classed('highlighted')) {
+      hideCapitalDot();
+    }
+    hint.style.opacity = '1';
+  }
+
+  // ── Search ─────────────────────────────────────────────────
+  function onSearch() {
+    const q = searchEl.value.trim().toLowerCase();
+
+    // Clear previous highlight
+    if (currentHighlighted) {
+      d3.select('#c' + currentHighlighted).classed('highlighted', false);
+      currentHighlighted = null;
+      hideCapitalDot();
+      hideTooltip();
+    }
+
+    if (!q) {
+      searchEl.classList.remove('no-match');
+      return;
+    }
+
+    // Find first match
+    const match = Object.entries(COUNTRY_DATA).find(([, v]) =>
+      v.name.toLowerCase().startsWith(q)
+    ) || Object.entries(COUNTRY_DATA).find(([, v]) =>
+      v.name.toLowerCase().includes(q)
+    );
+
+    if (match) {
+      const [id, data] = match;
+      searchEl.classList.remove('no-match');
+      currentHighlighted = +id;
+      const el = d3.select('#c' + id);
+      el.classed('highlighted', true).raise();
+
+      // Show capital dot and tooltip for matched country
+      showCapitalDot(data);
+
+      // Position tooltip near country centroid
+      const pathNode = el.node();
+      if (pathNode) {
+        const bbox = pathNode.getBoundingClientRect();
+        showTooltip(data, bbox.left + bbox.width / 2, bbox.top + bbox.height / 2);
+      }
+    } else {
+      searchEl.classList.add('no-match');
+    }
+  }
+
+  // ── Load map data ──────────────────────────────────────────
+  const TOPO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+
+  d3.json(TOPO_URL).then(world => {
+    init(world);
+  }).catch(err => {
+    document.body.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#64748b;flex-direction:column;gap:12px;">
+        <div style="font-size:40px">🌍</div>
+        <div style="font-size:18px;font-weight:600;color:#0f172a">Failed to load map</div>
+        <div style="font-size:14px">Please check your internet connection and refresh the page.</div>
+      </div>`;
+  });
+  </script>
+</body>
+</html>
